@@ -1744,6 +1744,7 @@ module Dm_Common = struct
       let open Xenops_interface.Vgpu in
       match x with
       | Vgpu [{implementation = Nvidia _}] -> ["-vgpu"]
+      | Vgpu ({implementation = Nvidia _} :: others) -> ["-vgpu"]
       | Vgpu [{implementation = GVT_g gvt_g}] ->
         let base_opts = [
           "-xengt";
@@ -1819,19 +1820,35 @@ module Dm_Common = struct
     ; fd_map = []
     }
 
-  let vgpu_args_of_nvidia domid vcpus (vgpu:Xenops_interface.Vgpu.nvidia) pci restore device =
+  let vgpu_args_of_nvidia domid vcpus vgpus restore =
     let open Xenops_interface.Vgpu in
+    let virtual_pci_address_compare vgpu1 vgpu2 =
+    match vgpu1, vgpu2 with
+    |{implementation = Nvidia nvi1},  {implementation = Nvidia nvi2} ->
+         begin
+             match nvi1.virtual_pci_address, nvi2.virtual_pci_address with
+             |Some pci1, Some pci2 -> Pervasives.compare pci1.dev pci2.dev
+             |_,_-> 0
+         end
+    |_,_->0 in
+
+    let get_pci_string = function
+      | None -> raise (Xenopsd_error (Internal_error "No PCI address"))
+      | Some pci -> Xcp_pci.string_of_address pci in
+
+    let device_args =
+      List.map (fun x ->
+          match x.implementation with
+          | Nvidia _conf ->
+             "--device=" ^ (Xenops_interface.Pci.string_of_address x.physical_pci_address) ^ ","  ^_conf.config_file ^ "," ^ get_pci_string _conf.virtual_pci_address
+          | _ -> "")
+        (List.sort virtual_pci_address_compare vgpus ) in
     let suspend_file = sprintf demu_save_path domid in
-    let device_opt = match device with
-      | None -> []
-      | Some d -> ["--device"; string_of_int d] in
     let base_args = [
       "--domain=" ^ (string_of_int domid);
       "--vcpus=" ^ (string_of_int vcpus);
-      "--gpu=" ^ (Xenops_interface.Pci.string_of_address pci);
-      "--config=" ^ vgpu.config_file;
       "--suspend=" ^ suspend_file;
-    ] @ device_opt in
+    ] @ device_args in
     let fd_arg = if restore then ["--resume"] else [] in
     List.concat [base_args; fd_arg]
 
@@ -2982,20 +2999,14 @@ module Dm = struct
   let start_vgpu ~xs task ?(restore=false) domid vgpus vcpus profile =
     let open Xenops_interface.Vgpu in
     match vgpus with
-    | [{physical_pci_address = pci; implementation = Nvidia vgpu}] ->
+    | {physical_pci_address = pci; implementation = Nvidia vgpu} :: others ->
       (* Start DEMU and wait until it has reached the desired state *)
       let state_path = Printf.sprintf "/local/domain/%d/vgpu/state" domid in
       let cancel = Cancel_utils.Vgpu domid in
       if not (Vgpu.is_running ~xs domid) then begin
-        (* The below line does nothing if the device is already bound to the
-           			 * nvidia driver. We rely on xapi to refrain from attempting to run
-           			 * a vGPU on a device which is passed through to a guest. *)
-        debug "start_vgpu: got VGPU with physical pci address %s"
-          (Xenops_interface.Pci.string_of_address pci);
         PCI.bind [pci] PCI.Nvidia;
         let module Q = (val Backend.of_profile profile) in
-        let device = Q.Vgpu.device ~index:0 in
-        let args = vgpu_args_of_nvidia domid vcpus vgpu pci restore device in
+        let args = vgpu_args_of_nvidia domid vcpus vgpus restore in
         let vgpu_pid = start_daemon ~path:!Xc_resources.vgpu ~args ~name:"vgpu"
             ~domid ~fds:[] () in
         wait_path ~pid:vgpu_pid ~task ~name:"vgpu" ~domid ~xs
