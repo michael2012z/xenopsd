@@ -1733,7 +1733,7 @@ module Dm_Common = struct
     let vga_type_opts x =
       let open Xenops_interface.Vgpu in
       match x with
-      | Vgpu [{implementation = Nvidia _}] -> ["-vgpu"]
+      | Vgpu [{implementation = Nvidia _}; {implementation = Nvidia _}] -> ["-vgpu"]
       | Vgpu [{implementation = GVT_g gvt_g}] ->
         let base_opts = [
           "-xengt";
@@ -1747,7 +1747,7 @@ module Dm_Common = struct
         and priv_opt = ["-priv"] in
         List.flatten [base_opts; config_file_opt; priv_opt]
       | Vgpu [{implementation = MxGPU mxgpu}] -> []
-      | Vgpu _ -> failwith "Unsupported vGPU configuration"
+      | Vgpu _ -> failwith "michael 0: Unsupported vGPU configuration" 
       | Std_vga -> ["-std-vga"]
       | Cirrus -> []
       | GVT_d -> ["-std-vga"] (* relies on pci-passthrough *)
@@ -3006,7 +3006,7 @@ module Dm = struct
   let start_vgpu ~xs task ?(restore=false) domid vgpus vcpus profile =
     let open Xenops_interface.Vgpu in
     match vgpus with
-    | [{physical_pci_address = pci; implementation = Nvidia vgpu}] ->
+    | [{physical_pci_address = pci; implementation = Nvidia vgpu}; {physical_pci_address = pci1; implementation = Nvidia vgpu1}] ->
       (* Start DEMU and wait until it has reached the desired state *)
       let state_path = Printf.sprintf "/local/domain/%d/vgpu/state" domid in
       let cancel = Cancel_utils.Vgpu domid in
@@ -3054,7 +3054,7 @@ module Dm = struct
           ] in
           write_vgpu_data ~xs domid 0 keys
         )
-    | _ -> failwith "Unsupported vGPU configuration"
+    | _ -> failwith "michael 1: Unsupported vGPU configuration"
 
 
   type action = Start | Restore | StartVNC
