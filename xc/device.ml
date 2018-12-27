@@ -1823,7 +1823,11 @@ module Dm_Common = struct
   let vgpu_args_of_nvidia domid vcpus vgpus restore =
     let open Xenops_interface.Vgpu in
     let device_args =
-      List.map (fun x -> "--device " ^ (Xenops_interface.Pci.string_of_address x.physical_pci_address) ^ ","  ^ "m60-8q" ^ "," ^ Xenops_interface.Pci.string_of_address Pci.{domain = 0; bus = (11 + x.position); dev = 0; fn = 0} ) vgpus in
+      List.map (fun x -> 
+          match x.implementation with
+          | Nvidia _conf -> 
+             "--device " ^ (Xenops_interface.Pci.string_of_address x.physical_pci_address) ^ ","  ^ (List.nth (String.split_on_char ' ' _conf.config_file) 1) ^ "," ^ Xenops_interface.Pci.string_of_address Pci.{domain = 0; bus = (11 + x.position); dev = 0; fn = 0} 
+          | _ -> "") vgpus in
     let suspend_file = sprintf demu_save_path domid in
     let base_args = [
       "--domain=" ^ (string_of_int domid);
