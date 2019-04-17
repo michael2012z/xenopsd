@@ -1824,8 +1824,9 @@ module Dm_Common = struct
     let open Xenops_interface.Vgpu in
     let virtual_pci_address_compare vgpu1 vgpu2 =
       match vgpu1, vgpu2 with
-      |{implementation = Nvidia {virtual_pci_address = Some pci1, _}}, {implementation = Nvidia {virtual_pci_address = Some pci2, _}} -> Pervasives.compare pci1.dev pci2.dev
-      | _, _ -> 0 in
+      |{implementation = Nvidia {virtual_pci_address = Some pci1; _}}, {implementation = Nvidia {virtual_pci_address = Some pci2; _}} -> Pervasives.compare pci1.dev pci2.dev
+      | _, _ -> raise (Xenopsd_error (Internal_error "Not comparable vGPUs"))
+      in
     let get_pci_string = function
       | None -> raise (Xenopsd_error (Internal_error "No PCI address"))
       | Some pci -> Xcp_pci.string_of_address pci in
@@ -1833,7 +1834,7 @@ module Dm_Common = struct
       List.map (fun x ->
           match x.implementation with
           | Nvidia _conf ->
-             "--device=" ^ (Xenops_interface.Pci.string_of_address x.physical_pci_address) ^ ","  ^_conf.config_file ^ "," ^ get_pci_string _conf.virtual_pci_address
+             Printf.sprintf "--device=%s,%s,%s" (Xenops_interface.Pci.string_of_address x.physical_pci_address) _conf.type_id (get_pci_string _conf.virtual_pci_address)
           | _ -> "")
         (List.sort virtual_pci_address_compare vgpus) in
     let suspend_file = sprintf demu_save_path domid in
