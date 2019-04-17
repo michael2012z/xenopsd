@@ -1744,7 +1744,7 @@ module Dm_Common = struct
       let open Xenops_interface.Vgpu in
       match x with
       | Vgpu [{implementation = Nvidia _}] -> ["-vgpu"]
-      | Vgpu ({implementation = Nvidia _} :: others) -> ["-vgpu"]
+      | Vgpu ({implementation = Nvidia _} :: _) -> ["-vgpu"]
       | Vgpu [{implementation = GVT_g gvt_g}] ->
         let base_opts = [
           "-xengt";
@@ -1823,26 +1823,19 @@ module Dm_Common = struct
   let vgpu_args_of_nvidia domid vcpus vgpus restore =
     let open Xenops_interface.Vgpu in
     let virtual_pci_address_compare vgpu1 vgpu2 =
-    match vgpu1, vgpu2 with
-    |{implementation = Nvidia nvi1},  {implementation = Nvidia nvi2} ->
-         begin
-             match nvi1.virtual_pci_address, nvi2.virtual_pci_address with
-             |Some pci1, Some pci2 -> Pervasives.compare pci1.dev pci2.dev
-             |_,_-> 0
-         end
-    |_,_->0 in
-
+      match vgpu1, vgpu2 with
+      |{implementation = Nvidia {virtual_pci_address = Some pci1, _}}, {implementation = Nvidia {virtual_pci_address = Some pci2, _}} -> Pervasives.compare pci1.dev pci2.dev
+      | _, _ -> 0 in
     let get_pci_string = function
       | None -> raise (Xenopsd_error (Internal_error "No PCI address"))
       | Some pci -> Xcp_pci.string_of_address pci in
-
     let device_args =
       List.map (fun x ->
           match x.implementation with
           | Nvidia _conf ->
              "--device=" ^ (Xenops_interface.Pci.string_of_address x.physical_pci_address) ^ ","  ^_conf.config_file ^ "," ^ get_pci_string _conf.virtual_pci_address
           | _ -> "")
-        (List.sort virtual_pci_address_compare vgpus ) in
+        (List.sort virtual_pci_address_compare vgpus) in
     let suspend_file = sprintf demu_save_path domid in
     let base_args = [
       "--domain=" ^ (string_of_int domid);
@@ -2999,7 +2992,7 @@ module Dm = struct
   let start_vgpu ~xs task ?(restore=false) domid vgpus vcpus profile =
     let open Xenops_interface.Vgpu in
     match vgpus with
-    | {physical_pci_address = pci; implementation = Nvidia vgpu} :: others ->
+    | {physical_pci_address = pci; implementation = Nvidia vgpu} :: _ ->
       (* Start DEMU and wait until it has reached the desired state *)
       let state_path = Printf.sprintf "/local/domain/%d/vgpu/state" domid in
       let cancel = Cancel_utils.Vgpu domid in
