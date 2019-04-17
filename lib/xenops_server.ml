@@ -1061,10 +1061,10 @@ let rec atomics_of_operation = function
   | VM_resume (id, data) ->
     (* If we've got a vGPU, then save its state will be in the same file *)
     let vgpu_data = if VGPU_DB.ids id = [] then None else Some data in
-    let vgpu_ids = VGPU_DB.ids id in
     let vgpu_start_operations = 
-      if vgpu_ids = [] then []
-      else [VGPU_start (vgpu_ids, true);]
+      match VGPU_DB.ids id with
+      | [] -> []
+      | vgpus -> [VGPU_start (vgpus, true)]
     in
     simplify [
       VM_create (id, None, None);
@@ -1332,7 +1332,7 @@ let rec perform_atomic ~progress_callback ?subtask:_ ?result (op: atomic) (t: Xe
     B.VGPU.set_active t (VGPU_DB.vm_of id) (VGPU_DB.read_exn id) b;
     VGPU_DB.signal id
   | VGPU_start (ids, saved_state) ->
-    debug "VGPU.start %s" (VGPU_DB.string_of_id (List.hd ids));
+    debug "VGPU.start %s" (ids |> List.map VGPU_DB.string_of_id |> String.concat " ");
     let vgpus = List.map (fun id -> VGPU_DB.read_exn id) ids in
     B.VGPU.start t (VGPU_DB.vm_of (List.hd ids)) vgpus saved_state
   | VM_set_xsdata (id, xsdata) ->
@@ -1589,7 +1589,8 @@ and trigger_cleanup_after_failure_atom op t =
     immediate_operation dbg (fst id) (VM_check_state (VGPU_DB.vm_of id))
 
   | VGPU_start (ids, _) ->
-    immediate_operation dbg (fst (List.hd ids)) (VM_check_state (VGPU_DB.vm_of (List.hd ids)))
+    let id = List.hd ids in
+      immediate_operation dbg (fst id) (VM_check_state (VGPU_DB.vm_of id))
 
   | VM_hook_script_stable (id, _, _, _)
   | VM_hook_script (id, _, _)
